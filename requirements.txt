@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+torch
+transformers
+joblib
+pandas
+numpy
+scikit-learn
+huggingface_hub
+pydantic

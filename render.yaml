@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: phishnet-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: HF_MODEL_ID
+        value: YOUR_HF_USERNAME/phishnet-bert
+    disk:
+      name: model-cache
+      mountPath: /opt/render/project/src
+      sizeGB: 2

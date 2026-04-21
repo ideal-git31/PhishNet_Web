@@ -1,0 +1,11 @@
+bert_phishing_5k_benchmark/
+__pycache__/
+*.pyc
+phishnet_env/
+phishnet_env_311/
+*.npy
+bert_macro_features.csv
+lgbm_hybrid_model.joblib
+lgbm_vs_rf_report.txt
+lgbm_hybrid_training.ipynb
+.DS_Store

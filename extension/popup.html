@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhishNet</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 380px;
+      min-height: 200px;
+      background: #0a0e1a;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0d1b2a, #1a2744);
+      padding: 12px 16px;
+      border-bottom: 1px solid #1e3a5f;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-icon { font-size: 20px; }
+    .header-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: 0.3px;
+    }
+    .header-sub {
+      font-size: 10px;
+      color: #64748b;
+      letter-spacing: 0.5px;
+      font-family: monospace;
+    }
+
+    /* ── URL Bar ── */
+    .url-bar {
+      padding: 10px 16px;
+      background: #080c14;
+      border-bottom: 1px solid #1e3a5f;
+    }
+    .url-label {
+      font-size: 10px;
+      color: #475569;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .url-text {
+      font-family: monospace;
+      font-size: 11px;
+      color: #60a5fa;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    /* ── Loading ── */
+    .loading {
+      padding: 32px 16px;
+      text-align: center;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #1e3a5f;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: #475569; font-size: 12px; }
+
+    /* ── Verdict ── */
+    .verdict {
+      padding: 14px 16px;
+      border-bottom: 1px solid #1e3a5f;
+    }
+    .verdict-phish {
+      background: linear-gradient(135deg, #1a0505, #2d0a0a);
+      border-left: 4px solid #ef4444;
+    }
+    .verdict-safe {
+      background: linear-gradient(135deg, #051a0a, #0a2d10);
+      border-left: 4px solid #22c55e;
+    }
+    .verdict-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .verdict-score {
+      font-family: monospace;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .verdict-sub {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 4px;
+      font-family: monospace;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Progress bar ── */
+    .prog-wrap {
+      height: 4px;
+      background: #1e293b;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .prog-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+    /* ── Score row ── */
+    .scores {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #1e3a5f;
+    }
+    .score-box {
+      flex: 1;
+      padding: 10px 12px;
+      text-align: center;
+      border-right: 1px solid #1e3a5f;
+    }
+    .score-box:last-child { border-right: none; }
+    .score-val {
+      font-family: monospace;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .score-lbl {
+      font-size: 9px;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: 2px;
+    }
+    .agree-badge {
+      font-size: 9px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-top: 3px;
+      display: inline-block;
+    }
+
+    /* ── Features ── */
+    .section-title {
+      padding: 8px 16px 4px;
+      font-size: 9px;
+      color: #3b82f6;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-family: monospace;
+      border-bottom: 1px solid #0f1f33;
+    }
+
+    .feat-list { padding: 6px 16px 8px; }
+    .feat-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 4px 0;
+      font-size: 11px;
+    }
+    .feat-flag { width: 14px; font-size: 10px; flex-shrink: 0; }
+    .feat-name { color: #94a3b8; flex: 1; }
+    .feat-track {
+      width: 60px; height: 5px;
+      background: #1e293b;
+      border-radius: 3px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .feat-fill { height: 100%; border-radius: 3px; }
+    .feat-val {
+      font-family: monospace;
+      color: #cbd5e1;
+      font-size: 10px;
+      width: 30px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── Tips ── */
+    .tips { padding: 4px 16px 10px; }
+    .tip-box {
+      background: #0c1829;
+      border-left: 2px solid #f59e0b;
+      border-radius: 4px;
+      padding: 6px 10px;
+      margin: 4px 0;
+    }
+    .tip-name { color: #fbbf24; font-size: 10px; font-weight: 700; margin-bottom: 2px; }
+    .tip-body { color: #94a3b8; font-size: 10px; line-height: 1.4; }
+
+    /* ── Safe state ── */
+    .safe-msg {
+      padding: 8px 16px 12px;
+      background: #051a0a;
+      border-left: 2px solid #22c55e;
+      border-radius: 4px;
+      margin: 4px 16px;
+      font-size: 10px;
+      color: #86efac;
+      line-height: 1.4;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 6px 16px;
+      border-top: 1px solid #0f1f33;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .footer-left { font-size: 9px; color: #334155; font-family: monospace; }
+    .footer-right { font-size: 9px; color: #334155; }
+
+    /* ── Error ── */
+    .error-box {
+      padding: 20px 16px;
+      text-align: center;
+      color: #f87171;
+      font-size: 12px;
+    }
+
+    /* ── BERT note ── */
+    .bert-note {
+      margin: 0 16px 8px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">🛡️</div>
+    <div>
+      <div class="header-title">PhishNet</div>
+      <div class="header-sub">BERT · PCA · RANDOM FOREST · XAI</div>
+    </div>
+  </div>
+
+  <!-- URL display -->
+  <div class="url-bar">
+    <div class="url-label">Scanning URL</div>
+    <div class="url-text" id="urlDisplay">Loading...</div>
+  </div>
+
+  <!-- Main content -->
+  <div id="content">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Running AI inference...</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-left" id="inferenceTime">—</div>
+    <div class="footer-right">PhishNet v1.0 · Adarsh Singh</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
