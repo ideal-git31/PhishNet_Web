@@ -1,7 +1,7 @@
 // PhishNet Extension — popup.js
 // Grabs current tab URL, calls PhishNet API, renders result
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "https://irbxrocket-phishnet-api.hf.space";
 
 // Feature max values for bar normalisation
 const FEAT_MAX = {
