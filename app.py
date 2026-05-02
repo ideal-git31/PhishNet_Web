@@ -20,6 +20,7 @@ import re
 import os
 from urllib.parse import urlparse
 import time
+from huggingface_hub import hf_hub_download
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVICE
@@ -103,15 +104,112 @@ FEATURE_META = {
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_models():
-    model_path = "./bert_phishing_5k_benchmark"
+    model_path = "IRBXrocket/phishnet-bert"
     tokenizer  = AutoTokenizer.from_pretrained("bert-base-uncased")
     dl_model   = AutoModelForSequenceClassification.from_pretrained(model_path).to(device)
     dl_model.eval()
-    rf_model   = joblib.load("random_forest_model.joblib")
-    pca        = joblib.load("pca_compressor.joblib")
+    rf_model = joblib.load(hf_hub_download(repo_id="IRBXrocket/phishnet-bert", filename="random_forest_model.joblib"))
+    pca      = joblib.load(hf_hub_download(repo_id="IRBXrocket/phishnet-bert", filename="pca_compressor.joblib"))
     return tokenizer, dl_model, rf_model, pca
 
 tokenizer, dl_model, rf_model, pca = load_models()
+
+# ── Add this function near the top of app.py, after model is loaded ──
+
+def get_bert_token_attention(url):
+    """Extract which URL tokens BERT paid most attention to."""
+    inputs = tokenizer(
+        url,
+        return_tensors="pt",
+        max_length=128,
+        truncation=True,
+        padding=True
+    )
+    with torch.no_grad():
+        outputs = dl_model(
+            input_ids=inputs['input_ids'].to(device),
+            attention_mask=inputs['attention_mask'].to(device),
+            output_hidden_states=False,
+            output_attentions=True,
+            return_dict=True
+        )
+
+        if outputs.attentions is None or len(outputs.attentions) == 0:
+            return []
+        
+        last_layer = outputs.attentions[-1]
+    
+    # Last layer, average across all 12 heads, CLS token row
+    last_layer = outputs.attentions[-1]        # (1, 12, seq_len, seq_len)
+    cls_attention = last_layer[0, :, 0, :]     # (12, seq_len)
+    avg_attention = cls_attention.mean(dim=0)  # (seq_len,)
+    
+    tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+    
+    skip = {'[CLS]', '[SEP]', '[PAD]'}
+    token_scores = []
+    for tok, score in zip(tokens, avg_attention):
+        if tok not in skip:
+            # Clean up BERT WordPiece prefix
+            clean_tok = tok.replace('##', '')
+            token_scores.append({
+                'token': clean_tok,
+                'raw': tok,
+                'score': float(score)
+            })
+    
+    token_scores.sort(key=lambda x: x['score'], reverse=True)
+    return token_scores[:10]
+
+
+def interpret_token(token, score, bert_score):
+    """Give a human-readable reason why this token is suspicious."""
+    tok = token.lower()
+    
+    # Only explain if BERT score is actually high
+    if bert_score < 0.5:
+        return None
+    
+    patterns = [
+        # Brand impersonation
+        (['paypal', 'apple', 'google', 'amazon', 'microsoft', 'netflix',
+          'facebook', 'instagram', 'whatsapp', 'bank', 'secure', 'verified'],
+         "Brand/trust keyword — attackers embed trusted brand names in URLs to deceive victims"),
+        
+        # Action words
+        (['login', 'signin', 'sign-in', 'verify', 'confirm', 'update',
+          'validate', 'authenticate', 'authorize', 'reset', 'recover'],
+         "Credential harvesting keyword — commonly used in fake login and account recovery pages"),
+        
+        # Urgency / fear
+        (['urgent', 'alert', 'suspended', 'locked', 'limited', 'expire',
+          'warning', 'blocked', 'unusual', 'activity'],
+         "Urgency trigger — phishers use fear-based words to rush victims into clicking"),
+        
+        # Financial
+        (['account', 'payment', 'invoice', 'billing', 'credit', 'debit',
+          'wire', 'transfer', 'wallet', 'funds', 'refund'],
+         "Financial keyword — high-value target language used in financial phishing attacks"),
+        
+        # Suspicious TLDs / hosting
+        (['xyz', 'top', 'club', 'online', 'site', 'info', 'support',
+          'live', 'click', 'link', 'download'],
+         "High-risk TLD or domain suffix — frequently abused in disposable phishing domains"),
+        
+        # Random / encoded looking
+        (['http', 'https', 'www'],
+         "Protocol token — BERT noted the URL structure and protocol pattern"),
+    ]
+    
+    for keywords, explanation in patterns:
+        if any(kw in tok for kw in keywords):
+            return explanation
+    
+    # Generic fallback for high-scoring unknown tokens
+    if score > 0.05:
+        return "Suspicious substring — BERT identified this token as statistically associated with phishing URL patterns in training data"
+    
+    return None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LEXICAL EXTRACTOR
@@ -521,20 +619,77 @@ if scan:
                 </div>
             </div>"""
 
+        # ── NEW: Token attention extraction ──────────────────────────────────
+        bert_token_data = get_bert_token_attention(user_url)
+
+        token_rows_html = ""
+        explained_count = 0
+
+        for item in bert_token_data:
+            reason = interpret_token(item['token'], item['score'], bert_score)
+            if reason is None:
+                continue
+
+            pct = min(100, round((item['score'] / bert_token_data[0]['score']) * 100))
+            bar_color  = "#f97316" if bert_score > 0.5 else "#22c55e"
+            label_color = "#fbbf24" if bert_score > 0.5 else "#86efac"
+
+            token_rows_html += f"""
+            <div style="margin-bottom:10px;padding:8px 12px;
+                        background:rgba(255,255,255,0.03);border-radius:6px;
+                        border-left:3px solid {bar_color};">
+                <div style="display:flex;justify-content:space-between;
+                            align-items:center;margin-bottom:4px;">
+                    <span style="font-family:monospace;font-size:13px;
+                                 font-weight:700;color:{label_color};">
+                        {item['token']}
+                    </span>
+                    <span style="font-size:10px;color:#64748b;">
+                        {item['score']:.4f}
+                    </span>
+                </div>
+                <div style="background:#1e293b;border-radius:3px;
+                            height:4px;margin-bottom:6px;">
+                    <div style="width:{pct}%;background:{bar_color};
+                                height:4px;border-radius:3px;"></div>
+                </div>
+                <div style="font-size:11px;color:#94a3b8;line-height:1.5;">
+                    {reason}
+                </div>
+            </div>"""
+
+            explained_count += 1
+            if explained_count >= 5:
+                break
+
+        if explained_count == 0:
+            if bert_score > 0.5:
+                token_rows_html = """
+                <div style="font-size:11px;color:#94a3b8;padding:6px 0;">
+                    BERT flagged this URL based on its overall token sequence.
+                    The phishing signal is distributed across the full URL
+                    pattern rather than any single token.
+                </div>"""
+            else:
+                token_rows_html = """
+                <div style="font-size:11px;color:#94a3b8;padding:6px 0;">
+                    No suspicious token patterns detected. BERT found the
+                    URL structure consistent with legitimate site patterns.
+                </div>"""
+
         bert_note_clr = "#fbbf24" if bert_score > 0.5 else "#4ade80"
         bert_note_bg  = "#1a1200" if bert_score > 0.5 else "#0a1a0f"
         bert_note_bdr = "#78350f" if bert_score > 0.5 else "#14532d"
-        bert_note_txt = (
-            "BERT's semantic analysis flagged this URL's token patterns "
-            "as matching known phishing page structures."
+        bert_header   = (
+            "⚠️ BERT flagged these URL tokens as suspicious:"
             if bert_score > 0.5 else
-            "BERT's semantic analysis found no suspicious token patterns "
-            "matching known phishing structures."
+            "✅ BERT found no suspicious token patterns:"
         )
 
         components.html(f"""
         <style>
-          body {{ margin:0; padding:0; background:transparent; font-family:'Inter',sans-serif; }}
+          body {{ margin:0; padding:0; background:transparent;
+                  font-family:'Inter',sans-serif; }}
         </style>
         <div style="background:#0f172a;border:1px solid #1e3a5f;
                     border-radius:12px;padding:1.25rem 1.5rem;">
@@ -548,13 +703,25 @@ if scan:
                         border-left:3px solid {bert_note_clr};
                         border-radius:8px;padding:0.75rem 1rem;">
                 <div style="color:{bert_note_clr};font-weight:700;
-                            font-size:0.82rem;margin-bottom:0.25rem;">
+                            font-size:0.82rem;margin-bottom:6px;">
                     🧠 BERT Semantic Score: {bert_score:.1%}</div>
-                <div style="color:#94a3b8;font-size:0.78rem;line-height:1.5;">
-                    {bert_note_txt}</div>
+                <div style="font-size:11px;color:#64748b;margin-bottom:10px;">
+                    Token-level attention · final transformer layer ·
+                    avg across 12 heads</div>
+                <div style="font-size:0.78rem;color:#e2e8f0;font-weight:600;
+                            margin-bottom:8px;padding-bottom:6px;
+                            border-bottom:1px solid rgba(255,255,255,0.06);">
+                    {bert_header}</div>
+                {token_rows_html}
+                <div style="font-size:10px;color:#475569;margin-top:8px;
+                            padding-top:6px;
+                            border-top:1px solid rgba(255,255,255,0.05);">
+                    Higher attention weight = more influential in BERT's
+                    phishing decision
+                </div>
             </div>
         </div>
-        """, height=420)
+        """, height=600)
 
     # ─────────────────────────────────────────────────────────────────────────
     # DIAGNOSTICS (collapsed)
